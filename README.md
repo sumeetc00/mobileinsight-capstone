@@ -14,7 +14,7 @@ Note: MobileInsight requires Wireshark v3.4 which will automatically be installe
 
 ## Setup
 
- 1. use Linux Deploy to install a Ubuntu OS on the mobile device with disk image size of at least 8 GB 
+ 1. use Linux Deploy to install a Ubuntu OS on the mobile device with disk image size of **at least 8 GB**
  2.  use the tutorials above to install Apache Spark and MobileInsight on Ubuntu OS
  3. clone this repository somewhere within the Ubuntu OS (EXCEPT on the mounted sd card)
  4. replace the `mobile_insight/monitor/offline_replayer.py` file from the installed mobile_insight library to the `offline_replayer.py` file in this repository
