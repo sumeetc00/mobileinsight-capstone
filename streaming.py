@@ -86,20 +86,6 @@ class MaxAccumulatorParam(AccumulatorParam):
         value1 = value2
         return value1
 
-# Parses each logs' subpackets' samples' DL grant sizes
-def getUniqueGrantSizes(input):
-    print(input)
-    tuples = []
-    for sub_packet in input['Subpackets']:
-        print(sub_packet)
-        for sample in sub_packet['Samples']:
-            print(sample)
-            # key = str(input['timestamp']) + str(sample['HARQ ID']) + str(sample['Area ID']) + str(sample['PMCH ID'])
-            key = input['timestamp'] + str(sample['HARQ ID']) + str(sample['Area ID']) + str(sample['PMCH ID'])
-            tuples.append((key, sample['DL TBS (bytes)']))
-    print(tuples)
-    return tuples
-
 # called for each RDD in spark streaming, decodes and processes new mi2log file data and adds
 # the resulting data to the sliding window of the plot
 def addToWindow(rdd: RDD):
