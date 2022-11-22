@@ -22,6 +22,7 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
+# uses tracemalloc to determine memory allocations
 def display_top(snapshot, key_type='lineno', limit=3):
     snapshot = snapshot.filter_traces((
         tracemalloc.Filter(False, "<frozen importlib._bootstrap>"),
@@ -99,18 +100,8 @@ def getUniqueGrantSizes(input):
     print(tuples)
     return tuples
 
-def identifyEndOfCurrentWindow(rdd: RDD):
-    global last_processed_timestamp
-
-    timestamps = rdd.collect()
-    if timestamps:
-        current = np.max(timestamps)
-        if current > last_processed_timestamp.value:
-            last_processed_timestamp += current
-        # last_processed_timestamp += np.max(last_processed_timestamp.value, current)
-    print(last_processed_timestamp)
-
-
+# called for each RDD in spark streaming, decodes and processes new mi2log file data and adds
+# the resulting data to the sliding window of the plot
 def addToWindow(rdd: RDD):
     import warnings
     warnings.filterwarnings("ignore")
@@ -125,11 +116,12 @@ def addToWindow(rdd: RDD):
     global tx_accum
     global retx_accum
 
+    # determine new and visited files in target directory
     new_files = set()
     visited_files = processed_files.value
 
-    for filename in os.listdir('mi2logs/'):
-        file_path = os.path.join('mi2logs/', filename)
+    for filename in os.listdir('/sdcard/mobileinsight/logs/'):
+        file_path = os.path.join('/sdcard/mobileinsight/logs/', filename)
         try:
             file_name = file_path.split('/')[-1]
             if (os.path.isfile(file_path) or os.path.islink(file_path)) and not file_name in visited_files:
@@ -140,8 +132,9 @@ def addToWindow(rdd: RDD):
     print('visited:', visited_files)
     print('new:', new_files)
 
+    # run our customized analyzer to grab log data for channel utilization 
     src = OfflineReplayer()      
-    src.set_input_path('mi2logs/')
+    src.set_input_path('/sdcard/mobileinsight/logs/')
     analyzer_dl = CustomizedAnalyzerBrute()
     analyzer_dl.set_source(src)
     src.run_files(new_files)
@@ -150,12 +143,14 @@ def addToWindow(rdd: RDD):
 
     processed_files += new_files
 
+    # run uplink analyzer to grab log data for uplink latency
     src = OfflineReplayer()      
-    src.set_input_path('mi2logs/')
+    src.set_input_path('/sdcard/mobileinsight/logs/')
     analyzer_ul = UplinkLatencyAnalyzer()
     analyzer_ul.set_source(src)
     src.run_files(new_files)
     
+    # spark map operations on rdd to parse log messages and grab resource block info
     data_rdd = sc.parallelize(raw_data)
     # line_stream = data_rdd.flatMap(lambda log: log.split("\n"))
     evaluated_stream = data_rdd.map(lambda object: eval(object))
@@ -184,11 +179,14 @@ def addToWindow(rdd: RDD):
     global retx_arr
     global starttime
 
+    # if data exists in this iterations mi2logs, generate plots
     if data:
         # https://matplotlib.org/3.1.1/api/_as_gen/matplotlib.pyplot.hist.html stacked and framed
         # https://matplotlib.org/3.1.1/gallery/subplots_axes_and_figures/demo_constrained_layout.html gridpsec? 
         # https://www.qubole.com/blog/apache-spark-use-cases/
         print("Processing...")
+
+        # channel utilization plots
         fig, ax = plt.subplots()
         kwargs = dict(alpha=0.7, bins='auto', color='#0504aa', rwidth=0.85, density=True, stacked=True)
         n, bins, patches = plt.hist(x=list(utilization), **kwargs)
@@ -204,7 +202,7 @@ def addToWindow(rdd: RDD):
         fig.savefig('/sdcard/plots/dec{counter}_plot.png'.format(counter = png_counter.value))
         plt.close(fig)
 
-        # UPLINK LATENCY
+        # UPLINK LATENCY map reduce operations and plot
         latency = analyzer_ul.all_packets
         lat_rdd = sc.parallelize(latency)
 
@@ -240,6 +238,7 @@ def addToWindow(rdd: RDD):
 
     print('curr time:', (time.time() - starttime))
 
+    # if no new files, then generate the total plots and end program
     if (new_files == set()):
         print("Processing Totals...")
 
@@ -323,6 +322,7 @@ def addToWindow(rdd: RDD):
 
         ssc.stop()
 
+# grabs unique resource blocks from decoded log messages
 def getUniqueRBs(input):
     tuples = []
     for record in input['Records']:
@@ -330,6 +330,7 @@ def getUniqueRBs(input):
             tuples.append((input['timestamp'], record['Num RBs']))
     return tuples
 
+# grabs unique sequential resource blocks from decoded log messages
 def getUniqueSequntialRBs(input):
     tuples = []
     if len(input['Records']) >= 2:
@@ -385,6 +386,7 @@ def main():
     # Set up the path to the folder from which spark streaming will read all new/incoming files:
     binary_mi2log_files = ssc.textFileStream('/sdcard/mobileinsight/logs/')
     
+    # set up accumulators
     processed_files = sc.accumulator(set(), SetAccumulatorParam())
     running_resource_blocks = sc.accumulator([], ArrayAccumulatorParam())
     
@@ -395,6 +397,7 @@ def main():
     tx_accum = sc.accumulator(0)
     retx_accum = sc.accumulator(0)
 
+    # run the spark streaming with the addToWindow function
     binary_mi2log_files.foreachRDD(addToWindow)
 
     ssc.start()
